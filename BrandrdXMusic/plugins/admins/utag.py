@@ -1,72 +1,65 @@
 import asyncio
-import random
-from pyrogram import Client, filters
-from pyrogram.enums import ChatType
-from pyrogram.enums import ChatType, ChatMemberStatus
-from pyrogram.errors import UserNotParticipant
-from pyrogram.types import ChatPermissions
+from collections import defaultdict
+from pyrogram import filters
 from BrandrdXMusic import app
 from BrandrdXMusic.utils.branded_ban import admin_filter
 
-SPAM_CHATS = {}
+SPAM_CHATS = defaultdict(bool)
 
-
-@app.on_message(
-    filters.command(["utag", "uall"], prefixes=["/", "@", ".", "#"]) & admin_filter
-)
+@app.on_message(filters.command(["utag", "uall"], prefixes=["/", "@", ".", "#"]) & admin_filter)
 async def tag_all_users(_, message):
-    global SPAM_CHATS
     chat_id = message.chat.id
+
     if len(message.text.split()) == 1:
-        await message.reply_text(
-            "** ɢɪᴠᴇ sᴏᴍᴇ ᴛᴇxᴛ ᴛᴏ ᴛᴀɢ ᴀʟʟ, ʟɪᴋᴇ »** `@utag Hi Friends`"
-        )
-        return
+        return await message.reply_text("**Give some text to tag all, like »** `@utag Hello`")
 
     text = message.text.split(None, 1)[1]
-    if text:
-        await message.reply_text(
-            "**ᴜᴛᴀɢ [ᴜɴʟɪᴍɪᴛᴇᴅ ᴛᴀɢ] sᴛᴀʀᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!**\n\n**๏ ᴛᴀɢɢɪɴɢ ᴡɪᴛʜ sʟᴇᴇᴘ ᴏғ 7 sᴇᴄ.**\n\n**➥ ᴏғғ ᴛᴀɢɢɪɴɢ ʙʏ » /stoputag**"
-        )
+    await message.reply_text(
+        "**Unlimited tagging started!**\n\n"
+        "**Stop it anytime with » /stoputag**"
+    )
 
     SPAM_CHATS[chat_id] = True
-    f = True
-    while f:
-        if SPAM_CHATS.get(chat_id) == False:
-            await message.reply_text("**ᴜɴʟɪᴍɪᴛᴇᴅ ᴛᴀɢɢɪɴɢ sᴜᴄᴄᴇssғᴜʟʟʏ sᴛᴏᴘᴘᴇᴅ.**")
-            break
+
+    while SPAM_CHATS[chat_id]:
         usernum = 0
         usertxt = ""
-        try:
-            async for m in app.get_chat_members(message.chat.id):
-                if m.user.is_bot:
-                    continue
-                usernum += 1
-                usertxt += f"\n⊚ [{m.user.first_name}](tg://user?id={m.user.id})\n"
-                if usernum == 5:
-                    await app.send_message(
-                        message.chat.id,
-                        f"{text}\n{usertxt}\n\n|| ➥ ᴏғғ ᴛᴀɢɢɪɴɢ ʙʏ » /stoputag ||",
-                    )
-                    usernum = 0
-                    usertxt = ""
-                    await asyncio.sleep(7)
-        except Exception as e:
-            print(e)
+        async for m in app.get_chat_members(chat_id):
+            if not SPAM_CHATS[chat_id]:
+                break  # 🔥 तुरंत stop कर देगा
 
+            if m.user.is_bot:
+                continue
+            usernum += 1
+            usertxt += f"\n⊚ [{m.user.first_name}](tg://user?id={m.user.id})"
 
-@app.on_message(
-    filters.command(
-        ["stoputag", "stopuall", "offutag", "offuall", "utagoff", "ualloff"],
-        prefixes=["/", ".", "@", "#"],
-    )
-    & admin_filter
+            if usernum == 5:
+                await app.send_message(
+                    chat_id,
+                    f"{text}\n{usertxt}\n\n|| ➥ Off tagging by » /stoputag ||"
+                )
+                usernum = 0
+                usertxt = ""
+
+                # 🔥 Instead of one long sleep, छोटे हिस्सों में check करो
+                for _ in range(7):
+                    if not SPAM_CHATS[chat_id]:
+                        break
+                    await asyncio.sleep(1)
+
+        if not SPAM_CHATS[chat_id]:
+            break
+
+    await message.reply_text("**Unlimited tagging stopped successfully.**")
+
+@app.on_message(filters.command(
+    ["stoputag", "stopuall", "offutag", "offuall", "utagoff", "ualloff"],
+    prefixes=["/", ".", "@", "#"]) & admin_filter
 )
 async def stop_tagging(_, message):
-    global SPAM_CHATS
     chat_id = message.chat.id
-    if SPAM_CHATS.get(chat_id) == True:
+    if SPAM_CHATS.get(chat_id):
         SPAM_CHATS[chat_id] = False
-        return await message.reply_text("**ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ sᴛᴏᴘᴘɪɴɢ ᴜɴʟɪᴍɪᴛᴇᴅ ᴛᴀɢɢɪɴɢ...**")
+        await message.reply_text("**Stopping unlimited tagging...**")
     else:
-        await message.reply_text("**ᴜᴛᴀɢ ᴘʀᴏᴄᴇss ɪs ɴᴏᴛ ᴀᴄᴛɪᴠᴇ**")
+        await message.reply_text("**No active utag process in this chat.**")
