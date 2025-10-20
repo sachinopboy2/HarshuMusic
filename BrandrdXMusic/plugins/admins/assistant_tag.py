@@ -1,98 +1,103 @@
 import asyncio
-from pyrogram import filters
-from pyrogram.enums import ChatMembersFilter, ParseMode
-from pyrogram.helpers import escape_markdown
+from pyrogram import filters, ParseMode
 from pyrogram.errors import FloodWait
-
 from BrandrdXMusic.utils.database import get_assistant
 from BrandrdXMusic import app
 from BrandrdXMusic.utils.branded_ban import admin_filter
 
-SPAM_CHATS = []
+# Safe set for tracking active chats
+SPAM_CHATS = set()
+
+
+# Manual escape_markdown function for compatibility
+def escape_markdown(text: str) -> str:
+    escape_chars = "_*[]()~`>#+-=|{}.!:"
+    for char in escape_chars:
+        text = text.replace(char, f"\\{char}")
+    return text
 
 
 @app.on_message(
-    filters.command(
-        ["atag", "aall", "amention", "amentionall"], prefixes=["/", "@", ".", "#"]
-    )
+    filters.command(["atag", "aall", "amention", "amentionall"], prefixes=["/", "@", ".", "#"])
     & admin_filter
 )
-async def atag_all_useres(_, message):
-    userbot = await get_assistant(message.chat.id)
+async def atag_all_users(_, message):
+    chat_id = message.chat.id
 
-    if message.chat.id in SPAM_CHATS:
+    # Check if already running
+    if chat_id in SPAM_CHATS:
         return await message.reply_text(
-            "ᴛᴀɢɢɪɴɢ ᴘʀᴏᴄᴇss ᴀʟʀᴇᴀᴅʏ ʀᴜɴɴɪɴɢ!\nUse /acancel to stop."
+            "⚠️ Tagging process already running!\nUse /acancel to stop."
         )
 
+    # Get assistant userbot
+    userbot = await get_assistant(chat_id)
+    if not userbot:
+        return await message.reply_text("❌ Assistant not available in this chat!")
+
+    # Determine text to tag
     replied = message.reply_to_message
     if len(message.command) < 2 and not replied:
-        await message.reply_text(
-            "**Usage:** `/aall your text here` or reply to a message with `/aall`"
+        return await message.reply_text(
+            "❌ Usage: `/atag your text here` or reply to a message with `/atag`"
         )
-        return
 
-    text = None
-    if replied:
-        text = replied.text
-    else:
-        text = message.text.split(None, 1)[1]
+    text = replied.text if replied else message.text.split(None, 1)[1]
 
-    SPAM_CHATS.append(message.chat.id)
+    # Start tagging
+    SPAM_CHATS.add(chat_id)
     usernum = 0
     usertxt = ""
 
-    async for m in app.get_chat_members(message.chat.id, filter=ChatMembersFilter.MEMBERS):
-        if message.chat.id not in SPAM_CHATS:
-            break
-        if m.user.is_deleted:
-            continue
+    try:
+        async for m in app.get_chat_members(chat_id):
+            if chat_id not in SPAM_CHATS:  # Stop if canceled
+                break
 
-        usernum += 1
-        # Proper clickable mention
-        usertxt += f"[{escape_markdown(m.user.first_name, version=2)}](tg://user?id={m.user.id}) "
+            if m.user.is_bot or m.user.is_deleted:
+                continue
 
-        if usernum == 14:
+            usernum += 1
+            usertxt += f"[{escape_markdown(m.user.first_name)}](tg://user?id={m.user.id}) "
+
+            if usernum == 14:
+                try:
+                    await userbot.send_message(
+                        chat_id,
+                        f"{text}\n\n{usertxt}",
+                        disable_web_page_preview=True,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                await asyncio.sleep(2)
+                usernum = 0
+                usertxt = ""
+
+        # Send remaining mentions
+        if usertxt:
             try:
                 await userbot.send_message(
-                    message.chat.id,
+                    chat_id,
                     f"{text}\n\n{usertxt}",
                     disable_web_page_preview=True,
                     parse_mode=ParseMode.MARKDOWN
                 )
             except FloodWait as e:
                 await asyncio.sleep(e.value)
-            await asyncio.sleep(2)
-            usernum = 0
-            usertxt = ""
 
-    # Send remaining mentions
-    if usertxt:
-        try:
-            await userbot.send_message(
-                message.chat.id,
-                f"{text}\n\n{usertxt}",
-                disable_web_page_preview=True,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
+    except Exception as e:
+        print("Error in atag:", e)
 
-    try:
-        SPAM_CHATS.remove(message.chat.id)
-    except Exception:
-        pass
+    # Remove chat from active set
+    SPAM_CHATS.discard(chat_id)
 
 
-@app.on_message(filters.command("acancel", prefixes=["/", "@", ".", "#"]) & admin_filter)
-async def cancelcmd(_, message):
+@app.on_message(filters.command(["acancel", "astop"], prefixes=["/", "@", ".", "#"]) & admin_filter)
+async def cancel_tagging(_, message):
     chat_id = message.chat.id
     if chat_id in SPAM_CHATS:
-        try:
-            SPAM_CHATS.remove(chat_id)
-        except Exception:
-            pass
+        SPAM_CHATS.discard(chat_id)
         return await message.reply_text("✅ Tagging process stopped successfully!")
-
     else:
         return await message.reply_text("❌ No tagging process is currently running.")
