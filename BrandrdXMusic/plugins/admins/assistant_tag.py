@@ -1,15 +1,15 @@
 import asyncio
-from pyrogram import filters, ParseMode
+from pyrogram import filters
 from pyrogram.errors import FloodWait
 from BrandrdXMusic.utils.database import get_assistant
 from BrandrdXMusic import app
 from BrandrdXMusic.utils.branded_ban import admin_filter
 
-# Safe set for tracking active chats
+# Active chats tracker
 SPAM_CHATS = set()
 
 
-# Manual escape_markdown function for compatibility
+# Manual escape_markdown for clickable mentions
 def escape_markdown(text: str) -> str:
     escape_chars = "_*[]()~`>#+-=|{}.!:"
     for char in escape_chars:
@@ -24,18 +24,15 @@ def escape_markdown(text: str) -> str:
 async def atag_all_users(_, message):
     chat_id = message.chat.id
 
-    # Check if already running
     if chat_id in SPAM_CHATS:
         return await message.reply_text(
             "⚠️ Tagging process already running!\nUse /acancel to stop."
         )
 
-    # Get assistant userbot
     userbot = await get_assistant(chat_id)
     if not userbot:
         return await message.reply_text("❌ Assistant not available in this chat!")
 
-    # Determine text to tag
     replied = message.reply_to_message
     if len(message.command) < 2 and not replied:
         return await message.reply_text(
@@ -44,14 +41,13 @@ async def atag_all_users(_, message):
 
     text = replied.text if replied else message.text.split(None, 1)[1]
 
-    # Start tagging
     SPAM_CHATS.add(chat_id)
     usernum = 0
     usertxt = ""
 
     try:
         async for m in app.get_chat_members(chat_id):
-            if chat_id not in SPAM_CHATS:  # Stop if canceled
+            if chat_id not in SPAM_CHATS:
                 break
 
             if m.user.is_bot or m.user.is_deleted:
@@ -66,7 +62,7 @@ async def atag_all_users(_, message):
                         chat_id,
                         f"{text}\n\n{usertxt}",
                         disable_web_page_preview=True,
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode="Markdown"
                     )
                 except FloodWait as e:
                     await asyncio.sleep(e.value)
@@ -81,7 +77,7 @@ async def atag_all_users(_, message):
                     chat_id,
                     f"{text}\n\n{usertxt}",
                     disable_web_page_preview=True,
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode="Markdown"
                 )
             except FloodWait as e:
                 await asyncio.sleep(e.value)
@@ -89,7 +85,6 @@ async def atag_all_users(_, message):
     except Exception as e:
         print("Error in atag:", e)
 
-    # Remove chat from active set
     SPAM_CHATS.discard(chat_id)
 
 
@@ -99,5 +94,6 @@ async def cancel_tagging(_, message):
     if chat_id in SPAM_CHATS:
         SPAM_CHATS.discard(chat_id)
         return await message.reply_text("✅ Tagging process stopped successfully!")
+
     else:
         return await message.reply_text("❌ No tagging process is currently running.")
